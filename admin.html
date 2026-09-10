@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel administrativo</title>
+<style>
+  :root {
+    --accent: #D85A30;
+    --bg: #FAFAF8;
+    --surface: #FFFFFF;
+    --border: #E5E3DD;
+    --text: #1C1B19;
+    --text-secondary: #6B6862;
+    --danger: #A32D2D;
+    --success: #3B6D11;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  .hidden { display: none !important; }
+  input, select {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 14px; margin-bottom: 10px;
+  }
+  button {
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface);
+    border-radius: var(--radius); padding: 9px 14px; font-size: 14px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .btn-danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+  .btn-icon { width: 34px; height: 34px; border-radius: 50%; padding: 0; }
+
+  /* Login screen */
+  #login-screen {
+    max-width: 340px; margin: 80px auto; padding: 24px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  }
+  #login-screen h1 { font-size: 18px; margin: 0 0 16px; text-align: center; }
+  #login-error { color: var(--danger); font-size: 13px; margin: -4px 0 10px; }
+
+  /* App shell */
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  header.top .biz { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+  header.top img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+
+  nav.tabs {
+    display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  nav.tabs button {
+    flex-shrink: 0; font-size: 13px; border: 1px solid var(--border); color: var(--text-secondary);
+  }
+  nav.tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 10px;
+  }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .row-actions { display: flex; gap: 6px; }
+  .muted { color: var(--text-secondary); font-size: 12px; }
+  .section-title { font-size: 13px; color: var(--text-secondary); margin: 18px 0 8px; }
+  .status-pill {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600;
+  }
+  .status-pending { background: #FAEEDA; color: #633806; }
+  .status-accepted { background: #E1F5EE; color: #085041; }
+  .status-done { background: #EAF3DE; color: #27500A; }
+  .status-cancelled { background: #FCEBEB; color: #791F1F; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 14px; }
+
+  .hours-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .hours-row .day-label { width: 90px; flex-shrink: 0; }
+  .hours-row input[type=time] { margin: 0; width: 100px; }
+  .hours-row input[type=checkbox] { width: auto; margin: 0; }
+
+  .color-swatches { display: flex; gap: 8px; margin-bottom: 12px; }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .swatch.selected { border-color: var(--text); }
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <h1>Entrar no painel</h1>
+  <div id="login-error" class="hidden"></div>
+  <input type="text" id="login-email" placeholder="Email">
+  <input type="password" id="login-password" placeholder="Senha">
+  <button class="btn-primary" id="login-btn" style="width:100%">Entrar</button>
+</div>
+
+<div id="app-shell" class="hidden">
+  <header class="top">
+    <div class="biz">
+      <img id="biz-logo" src="">
+      <span id="biz-name"></span>
+    </div>
+    <button id="logout-btn">Sair</button>
+  </header>
+  <nav class="tabs">
+    <button data-tab="orders" class="active">Pedidos</button>
+    <button data-tab="products">Produtos</button>
+    <button data-tab="hours">Horários</button>
+    <button data-tab="appearance">Aparência</button>
+  </nav>
+  <main id="tab-content"></main>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// ====== CONFIGURAÇÃO ======
+const SUPABASE_URL = 'https://feqjlanpcurjppobrckd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlcWpsYW5wY3VyanBwb2JyY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNzkxNzEsImV4cCI6MjEwNDY1NTE3MX0.ESa6QeJHuCoOC6rsk3c3EcBSAvplaXfFe2uZmdIBRpU';
+// ===========================
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let business = null;
+let categories = [];
+let products = [];
+let hours = [];
+let orders = [];
+let activeTab = 'orders';
+
+const DAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const COLOR_OPTIONS = ['#D85A30', '#639922', '#378ADD', '#D4537E', '#0F6E56', '#854F0B'];
+
+function money(n) {
+  return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+// ---------- AUTH ----------
+document.getElementById('login-btn').addEventListener('click', doLogin);
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  errorEl.classList.add('hidden');
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    errorEl.textContent = 'Email ou senha inválidos.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  await afterLogin();
+}
+
+async function afterLogin() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: adminRow, error } = await supabase
+    .from('admin_users')
+    .select('business_id')
+    .eq('id', user.id)
+    .single();
+
+  if (error || !adminRow) {
+    document.getElementById('login-error').textContent = 'Este usuário não está vinculado a nenhum negócio.';
+    document.getElementById('login-error').classList.remove('hidden');
+    await supabase.auth.signOut();
+    return;
+  }
+
+  const { data: biz } = await supabase.from('businesses').select('*').eq('id', adminRow.business_id).single();
+  business = biz;
+
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app-shell').classList.remove('hidden');
+  document.getElementById('biz-name').textContent = business.name;
+  document.getElementById('biz-logo').src = business.logo_url || '';
+
+  await loadAll();
+  setupTabs();
+  renderTab();
+  subscribeRealtime();
+}
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  await supabase.auth.signOut();
+  window.location.reload();
+});
+
+async function checkExistingSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) await afterLogin();
+}
+checkExistingSession();
+
+// ---------- DATA LOADING ----------
+async function loadAll() {
+  const [{ data: cats }, { data: prods }, { data: hrs }, { data: ords }] = await Promise.all([
+    supabase.from('categories').select('*').eq('business_id', business.id).order('sort_order'),
+    supabase.from('products').select('*').eq('business_id', business.id).order('sort_order'),
+    supabase.from('business_hours').select('*').eq('business_id', business.id),
+    supabase.from('orders').select('*').eq('business_id', business.id).order('created_at', { ascending: false }).limit(50)
+  ]);
+  categories = cats || [];
+  products = prods || [];
+  hours = hrs || [];
+  orders = ords || [];
+}
+
+function subscribeRealtime() {
+  supabase.channel('orders-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `business_id=eq.${business.id}` }, async () => {
+      const { data } = await supabase.from('orders').select('*').eq('business_id', business.id).order('created_at', { ascending: false }).limit(50);
+      orders = data || [];
+      if (activeTab === 'orders') renderTab();
+    })
+    .subscribe();
+}
+
+// ---------- TABS ----------
+function setupTabs() {
+  document.querySelectorAll('nav.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      renderTab();
+    });
+  });
+}
+
+function renderTab() {
+  const el = document.getElementById('tab-content');
+  if (activeTab === 'orders') el.innerHTML = renderOrders();
+  else if (activeTab === 'products') el.innerHTML = renderProducts();
+  else if (activeTab === 'hours') el.innerHTML = renderHours();
+  else if (activeTab === 'appearance') el.innerHTML = renderAppearance();
+  attachTabEvents();
+}
+
+// ---------- ORDERS ----------
+function renderOrders() {
+  if (!orders.length) return `<div class="empty-state">Nenhum pedido ainda.</div>`;
+  return orders.map(o => `
+    <div class="card">
+      <div class="row">
+        <div>
+          <strong>${o.customer_name}</strong>
+          <span class="status-pill status-${o.status}">${statusLabel(o.status)}</span>
+        </div>
+        <span class="muted">${new Date(o.created_at).toLocaleString('pt-BR')}</span>
+      </div>
+      <p class="muted">${o.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+      <div class="row">
+        <strong>${money(o.total)}</strong>
+        <div class="row-actions">
+          <button class="btn-icon" data-action="print" data-id="${o.id}" title="Imprimir">🖨</button>
+          ${o.status === 'pending' ? `<button class="btn-primary" data-action="accept" data-id="${o.id}">Aceitar</button>` : ''}
+          ${o.status === 'accepted' ? `<button class="btn-primary" data-action="done" data-id="${o.id}">Concluir</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+function statusLabel(s) {
+  return { pending: 'Pendente', accepted: 'Aceito', done: 'Concluído', cancelled: 'Cancelado' }[s] || s;
+}
+
+async function updateOrderStatus(id, status) {
+  await supabase.from('orders').update({ status }).eq('id', id);
+  const { data } = await supabase.from('orders').select('*').eq('business_id', business.id).order('created_at', { ascending: false }).limit(50);
+  orders = data || [];
+  renderTab();
+}
+
+function printOrder(id) {
+  const o = orders.find(o => o.id === id);
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <pre style="font-family:monospace; font-size:14px;">
+${business.name}
+------------------------
+Cliente: ${o.customer_name}
+Telefone: ${o.customer_phone || '-'}
+------------------------
+${o.items.map(i => `${i.qty}x ${i.name.padEnd(20)} ${money(i.price * i.qty)}`).join('\n')}
+------------------------
+TOTAL: ${money(o.total)}
+    </pre>
+  `);
+  w.document.close();
+  w.print();
+}
+
+// ---------- PRODUCTS ----------
+function renderProducts() {
+  let html = `<button class="btn-primary" data-action="add-category" style="margin-bottom:12px">+ Nova categoria</button>`;
+  for (const cat of categories) {
+    html += `<div class="section-title row">
+      <span>${cat.name}</span>
+      <button class="btn-icon" data-action="del-category" data-id="${cat.id}" title="Excluir categoria">🗑</button>
+    </div>`;
+    const items = products.filter(p => p.category_id === cat.id);
+    for (const p of items) html += productCard(p);
+    html += `<button data-action="add-product" data-catid="${cat.id}">+ Produto em ${cat.name}</button>`;
+  }
+  const noCat = products.filter(p => !p.category_id);
+  if (noCat.length) {
+    html += `<div class="section-title">Sem categoria</div>`;
+    for (const p of noCat) html += productCard(p);
+  }
+  return html;
+}
+function productCard(p) {
+  return `<div class="card row">
+    <div>
+      <strong>${p.name}</strong> ${!p.is_available ? '<span class="muted">(indisponível)</span>' : ''}
+      <p class="muted">${money(p.price)}</p>
+    </div>
+    <div class="row-actions">
+      <button data-action="toggle-product" data-id="${p.id}">${p.is_available ? 'Ocultar' : 'Mostrar'}</button>
+      <button data-action="edit-product" data-id="${p.id}">Editar</button>
+      <button class="btn-danger" data-action="del-product" data-id="${p.id}">Excluir</button>
+    </div>
+  </div>`;
+}
+
+async function addCategory() {
+  const name = prompt('Nome da categoria:');
+  if (!name) return;
+  await supabase.from('categories').insert({ business_id: business.id, name, sort_order: categories.length });
+  const { data } = await supabase.from('categories').select('*').eq('business_id', business.id).order('sort_order');
+  categories = data || [];
+  renderTab();
+}
+async function delCategory(id) {
+  if (!confirm('Excluir esta categoria? Os produtos ficarão sem categoria.')) return;
+  await supabase.from('categories').delete().eq('id', id);
+  await loadAll();
+  renderTab();
+}
+async function addOrEditProduct(catId, existing) {
+  const name = prompt('Nome do produto:', existing?.name || '');
+  if (!name) return;
+  const priceStr = prompt('Preço (ex: 25.90):', existing?.price ?? '');
+  const price = parseFloat((priceStr || '0').replace(',', '.'));
+  const description = prompt('Descrição (opcional):', existing?.description || '');
+  const image_url = prompt('URL da imagem (opcional):', existing?.image_url || '');
+
+  if (existing) {
+    await supabase.from('products').update({ name, price, description, image_url }).eq('id', existing.id);
+  } else {
+    await supabase.from('products').insert({
+      business_id: business.id, category_id: catId, name, price, description, image_url,
+      is_available: true, sort_order: products.length
+    });
+  }
+  await loadAll();
+  renderTab();
+}
+async function toggleProduct(id) {
+  const p = products.find(p => p.id === id);
+  await supabase.from('products').update({ is_available: !p.is_available }).eq('id', id);
+  await loadAll();
+  renderTab();
+}
+async function delProduct(id) {
+  if (!confirm('Excluir este produto?')) return;
+  await supabase.from('products').delete().eq('id', id);
+  await loadAll();
+  renderTab();
+}
+
+// ---------- HOURS ----------
+function renderHours() {
+  let html = '';
+  for (let day = 0; day < 7; day++) {
+    const h = hours.find(h => h.day_of_week === day) || { day_of_week: day, is_closed: true, opens_at: '18:00', closes_at: '23:00' };
+    html += `
+      <div class="hours-row" data-day="${day}">
+        <span class="day-label">${DAY_NAMES[day]}</span>
+        <input type="checkbox" data-field="closed" ${h.is_closed ? 'checked' : ''}>
+        <span class="muted">Fechado</span>
+        <input type="time" data-field="opens" value="${h.opens_at || '18:00'}" ${h.is_closed ? 'disabled' : ''}>
+        <input type="time" data-field="closes" value="${h.closes_at || '23:00'}" ${h.is_closed ? 'disabled' : ''}>
+      </div>
+    `;
+  }
+  html += `<button class="btn-primary" data-action="save-hours" style="margin-top:10px">Salvar horários</button>`;
+  return html;
+}
+async function saveHours() {
+  const rows = document.querySelectorAll('.hours-row');
+  for (const row of rows) {
+    const day = parseInt(row.dataset.day);
+    const is_closed = row.querySelector('[data-field=closed]').checked;
+    const opens_at = row.querySelector('[data-field=opens]').value;
+    const closes_at = row.querySelector('[data-field=closes]').value;
+    await supabase.from('business_hours').upsert({
+      business_id: business.id, day_of_week: day, is_closed, opens_at, closes_at
+    }, { onConflict: 'business_id,day_of_week' });
+  }
+  const { data } = await supabase.from('business_hours').select('*').eq('business_id', business.id);
+  hours = data || [];
+  alert('Horários salvos.');
+}
+
+// ---------- APPEARANCE ----------
+function renderAppearance() {
+  return `
+    <div class="card">
+      <label class="muted">Nome do negócio</label>
+      <input type="text" id="app-name" value="${business.name}">
+      <label class="muted">Cor principal</label>
+      <div class="color-swatches">
+        ${COLOR_OPTIONS.map(c => `<div class="swatch ${business.primary_color === c ? 'selected' : ''}" style="background:${c}" data-color="${c}"></div>`).join('')}
+      </div>
+      <label class="muted">URL do logo</label>
+      <input type="text" id="app-logo" value="${business.logo_url || ''}" placeholder="https://...">
+      <label class="muted">Número do WhatsApp (com DDD e país, só números)</label>
+      <input type="text" id="app-whatsapp" value="${business.whatsapp_number || ''}" placeholder="5588999999999">
+      <button class="btn-primary" data-action="save-appearance">Salvar</button>
+    </div>
+  `;
+}
+let selectedColor = business?.primary_color;
+async function saveAppearance() {
+  const name = document.getElementById('app-name').value.trim();
+  const logo_url = document.getElementById('app-logo').value.trim();
+  const whatsapp_number = document.getElementById('app-whatsapp').value.trim();
+  await supabase.from('businesses').update({
+    name, logo_url, whatsapp_number, primary_color: selectedColor || business.primary_color
+  }).eq('id', business.id);
+  const { data } = await supabase.from('businesses').select('*').eq('id', business.id).single();
+  business = data;
+  document.getElementById('biz-name').textContent = business.name;
+  document.getElementById('biz-logo').src = business.logo_url || '';
+  alert('Aparência atualizada.');
+  renderTab();
+}
+
+// ---------- EVENT DELEGATION ----------
+function attachTabEvents() {
+  const el = document.getElementById('tab-content');
+  el.querySelectorAll('[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === 'accept') updateOrderStatus(id, 'accepted');
+      else if (action === 'done') updateOrderStatus(id, 'done');
+      else if (action === 'print') printOrder(id);
+      else if (action === 'add-category') addCategory();
+      else if (action === 'del-category') delCategory(id);
+      else if (action === 'add-product') addOrEditProduct(btn.dataset.catid, null);
+      else if (action === 'edit-product') addOrEditProduct(null, products.find(p => p.id === id));
+      else if (action === 'toggle-product') toggleProduct(id);
+      else if (action === 'del-product') delProduct(id);
+      else if (action === 'save-hours') saveHours();
+      else if (action === 'save-appearance') saveAppearance();
+    });
+  });
+  el.querySelectorAll('.swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      selectedColor = sw.dataset.color;
+      el.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+    });
+  });
+  el.querySelectorAll('[data-field=closed]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const row = cb.closest('.hours-row');
+      row.querySelectorAll('input[type=time]').forEach(t => t.disabled = cb.checked);
+    });
+  });
+}
+</script>
+</body>
+</html>
