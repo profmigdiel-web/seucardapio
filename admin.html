@@ -149,8 +149,9 @@ async function doLogin() {
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    errorEl.textContent = 'Email ou senha inválidos.';
+    errorEl.textContent = error.message;
     errorEl.classList.remove('hidden');
+    console.error('Erro de login:', error);
     return;
   }
   await afterLogin();
